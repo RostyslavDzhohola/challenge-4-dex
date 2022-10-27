@@ -17,7 +17,8 @@ contract DEX {
 
     using SafeMath for uint256; //outlines use of SafeMath for uint256 variables
     IERC20 token; //instantiates the imported contract
-
+    uint256 public totaLiquidity; //total liquidity in the contract
+    mapping (address => uint256) public liquidity; //mapping of liquidity of each user
     /* ========== EVENTS ========== */
 
     /**
@@ -54,7 +55,15 @@ contract DEX {
      * @return totalLiquidity is the number of LPTs minting as a result of deposits made to DEX contract
      * NOTE: since ratio is 1:1, this is fine to initialize the totalLiquidity (wrt to balloons) as equal to eth balance of contract.
      */
-    function init(uint256 tokens) public payable returns (uint256) {}
+    function init(uint256 tokens) public payable returns (uint256) {
+        require(totaLiquidity == 0, "DEX: already initialized"); //ensures that the DEX contract has not already been initialized
+        require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
+        require(token.transferFrom(msg.sender, address(this), tokens) , "The Ballons did not transfer to the DEX" );
+        require(tokens > 0, "Amount of Balloons sent to DEX must be more than 0");
+        totaLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
+        liquidity[msg.sender] = totaLiquidity; //sets the liquidity of the sender to the total liquidity
+        return totaLiquidity; //returns the total liquidity
+    }
 
     /**
      * @notice returns yOutput, or yDelta for xInput (or xDelta)
