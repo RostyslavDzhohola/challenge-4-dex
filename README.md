@@ -128,7 +128,7 @@ Now when we `yarn deploy --reset` then our contract should be initialized as soo
 
 ### 🥅 Goals / Checks
 
-- [ ] 🎈 Under the debug tab, does your DEX show 5 ETH and 5 Balloons of liquidity?
+- [] 🎈 Under the debug tab, does your DEX show 5 ETH and 5 Balloons of liquidity?
 
 ---
 
@@ -207,7 +207,7 @@ Finally, let’s say the ratio is the same but we want to swap 100,000 tokens in
 
 ### 🥅 Goals / Checks
 
-- [ ] 🤔 Do you understand how the x\*y=k price curve actually works? Write down a clear explanation for yourself and derive the formula for price. You might have to shake off some old algebra skills!
+- [] 🤔 Do you understand how the x\*y=k price curve actually works? Write down a clear explanation for yourself and derive the formula for price. You might have to shake off some old algebra skills!
 - [ ] 💃 You should be able to go through the price section of this tutorial with the sample numbers and generate the same outputChange variable.
 
 > 💡 _Hints:_ See this [link](https://hackernoon.com/formulas-of-uniswap-a-deep-dive), solve for the change in the Output Reserve. See the section in that link up to the uniswap v3 title.
