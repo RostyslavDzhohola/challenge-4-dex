@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { List } from "antd";
 import { useEventListener } from "eth-hooks/events/useEventListener";
 import { Address, TokenBalance } from "../components";

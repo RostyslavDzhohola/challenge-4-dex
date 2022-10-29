@@ -24,22 +24,40 @@ contract DEX {
     /**
      * @notice Emitted when ethToToken() swap transacted
      */
-    event EthToTokenSwap();
+    event EthToTokenSwap(
+        address indexed _from,
+        uint256 _ethIn,
+        uint256 _tokensOut
+    );
 
     /**
      * @notice Emitted when tokenToEth() swap transacted
      */
-    event TokenToEthSwap();
+    event TokenToEthSwap(
+        address indexed _from,
+        uint256 _tokensIn,
+        uint256 _ethOut
+    );
 
     /**
      * @notice Emitted when liquidity provided to DEX and mints LPTs.
      */
-    event LiquidityProvided();
+    event LiquidityProvided(
+        address indexed _provider,
+        uint256 _ethAmount,
+        uint256 _tokenAmount,
+        uint256 _totalLiquidity
+    );
 
     /**
      * @notice Emitted when liquidity removed from DEX and decreases LPT count within DEX.
      */
-    event LiquidityRemoved();
+    event LiquidityRemoved(
+        address indexed _provider,
+        uint256 _ethAmount,
+        uint256 _tokenAmount,
+        uint256 _totalLiquidity
+    );
 
     /* ========== CONSTRUCTOR ========== */
 
@@ -62,6 +80,7 @@ contract DEX {
         require(tokens > 0, "Amount of Balloons sent to DEX must be more than 0");
         totaLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
         liquidity[msg.sender] = totaLiquidity; //sets the liquidity of the sender to the total liquidity
+        emit LiquidityProvided(msg.sender, msg.value, tokens, totaLiquidity); //emits the event that liquidity has been provided
         return totaLiquidity; //returns the total liquidity
     }
 
@@ -72,7 +91,7 @@ contract DEX {
      yOutput = yReserves * xInput / (xReserves + xInput)
      */
     function price(
-        uint256 xInput,
+        uint256 xInput, 
         uint256 xReserves,
         uint256 yReserves
     ) public pure returns (uint256 yOutput) {  
@@ -87,17 +106,41 @@ contract DEX {
      * if you are using a mapping liquidity, then you can use `return liquidity[lp]` to get the liquidity for a user.
      *
      */
-    function getLiquidity(address lp) public view returns (uint256) {}
+    function getLiquidity(address lp) public view returns (uint256) {
+        return liquidity[lp];
+    }
 
     /**
      * @notice sends Ether to DEX in exchange for $BAL
      */
-    function ethToToken() public payable returns (uint256 tokenOutput) {}
+    function ethToToken() public payable returns (uint256 tokenOutput) {
+        uint256 tokenReserves = token.balanceOf(address(this));
+        uint256 ethReserves = address(this).balance.sub(msg.value); // I am subtracting ETH from the contract balance, because I want to get reseves before I have added the ETH from the msg.value 
+        uint256 tokenAmountPurchased = price(msg.value, ethReserves, tokenReserves);
+        require(tokenAmountPurchased < tokenReserves, "Not enough tokens in the reserve");
+        require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
+        require(msg.value < ethReserves, "Not enough ETH in the reserve");
+        require(token.transfer(msg.sender, tokenAmountPurchased), "The Ballons did not transfer to the user" );
+        emit EthToTokenSwap(msg.sender, msg.value, tokenAmountPurchased);
+        return tokenAmountPurchased;
+    }
 
     /**
      * @notice sends $BAL tokens to DEX in exchange for Ether
      */
-    function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {}
+    function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {
+        uint256 tokenReserves = token.balanceOf(address(this));
+        uint256 ethReserves = address(this).balance;
+        uint256 ethAmountPurchased = price(tokenInput, tokenReserves ,ethReserves );
+        require(ethAmountPurchased < tokenReserves, "Not enough tokens in the reserve");
+        require(tokenInput > 0, "Amount of Balloons sent to DEX must be more than 0");
+        require(tokenInput < ethReserves, "Not enough ETH in the reserve");
+        require(token.transferFrom(msg.sender, address(this), tokenInput), "The Ballons did not transfer to the DEX" );
+        (bool sent,) = msg.sender.call{value: ethAmountPurchased}("");
+        require(sent, "Failed to send Ether");
+        emit TokenToEthSwap(msg.sender, tokenInput, ethAmountPurchased);
+        return ethAmountPurchased;
+    }
 
     /**
      * @notice allows deposits of $BAL and $ETH to liquidity pool
