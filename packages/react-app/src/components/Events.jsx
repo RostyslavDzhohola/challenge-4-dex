@@ -23,6 +23,7 @@ import { Address, TokenBalance } from "../components";
 export default function Events({ contracts, contractName, eventName, localProvider, mainnetProvider, startBlock }) {
   // 📟 Listen for broadcast events
   const events = useEventListener(contracts, contractName, eventName, localProvider, startBlock);
+  events.sort((a, b) => b.blockNumber - a.blockNumber);
 
   return (
     <div style={{ width: 600, margin: "auto", marginTop: 32, paddingBottom: 32 }}>
@@ -35,7 +36,11 @@ export default function Events({ contracts, contractName, eventName, localProvid
           ? "🎈-->⟠ Address | Trade | AmountOut | AmountIn"
           : eventName === "LiquidityProvided"
           ? "➕ Address | Liquidity Minted | Eth In | Balloons In"
-          : "➖ Address | Liquidity Withdrawn | ETH out | Balloons Out "}
+          : eventName === "LiquidityRemoved"
+          ? "➖ Address | Liquidity Withdrawn | ETH out | Balloons Out "
+          : eventName === "Approval"
+          ? " 📝 Address Owner | Address Spender | Value" 
+          : ""}
       </h2>
       <List
         bordered
@@ -48,8 +53,17 @@ export default function Events({ contracts, contractName, eventName, localProvid
               </List.Item>
             );
           }
+          if (eventName === "Approval") {
+            return (
+              <List.Item key={item.blockNumber + "_" + item.args[0].toString()}> 
+                <Address address={item.args[0]} ensProvider={mainnetProvider} fontSize={16} />
+                <Address address={item.args[1]} ensProvider={mainnetProvider} fontSize={16} />
+                <TokenBalance balance={item.args[2]} provider={localProvider} />
+              </List.Item>
+            );
+          } else {
           return (
-            <List.Item key={item.blockNumber + "_" + item.args[0].toString()}>
+            <List.Item key={item.blockNumber + "_" + item.args[0].toString()}> 
               <Address address={item.args[0]} ensProvider={mainnetProvider} fontSize={16} />
               {item.args[1].toString().indexOf("E") == -1 ? (
                 <TokenBalance balance={item.args[1]} provider={localProvider} />
@@ -60,7 +74,7 @@ export default function Events({ contracts, contractName, eventName, localProvid
               <TokenBalance balance={item.args[3]} provider={localProvider} />
             </List.Item>
           );
-        }}
+        }}}
       />
     </div>
   );

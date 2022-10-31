@@ -192,6 +192,7 @@ contract DEX {
         (bool sent, ) = msg.sender.call{value: ethAmountOut}("");
         require(sent, "ETH not sent to the msg.sender");
         require(token.transfer(msg.sender, tokenAmountOut), "BAL not transfered to the msg.sender");
+        liquidity[msg.sender] = liquidity[msg.sender].sub(amount);
         emit LiquidityRemoved(msg.sender, amount, ethAmountOut, tokenAmountOut);
         return (ethAmountOut, tokenAmountOut);
     }
