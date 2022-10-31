@@ -49,9 +49,9 @@ module.exports = async ({ getNamedAccounts, deployments, getChainId }) => {
   // If you are going to the testnet make sure your deployer account has enough ETH
   await balloons.approve(dex.address, ethers.utils.parseEther("100"));
   console.log("INIT exchange...");
-  await dex.init(ethers.utils.parseEther("5"), {
+  await dex.init(ethers.utils.parseEther("0.1"), {
     // transfer 5 balloons to DEX
-    value: ethers.utils.parseEther("5"),
+    value: ethers.utils.parseEther("0.1"),
     // transfer 5 ETH to DEX
     gasLimit: 200000,
   });

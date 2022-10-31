@@ -21,7 +21,7 @@ describe("🚩 Challenge 3: ⚖️ 🪙 Simple DEX", function () {
 
   before(async function () {
     [deployer, user2, user3] = await ethers.getSigners();
-    
+
     await deployments.fixture(['Balloons', 'DEX']);
 
     dexContract = await ethers.getContract('DEX', deployer);
