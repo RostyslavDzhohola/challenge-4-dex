@@ -140,7 +140,7 @@ contract DEX {
         require(token.transferFrom(msg.sender, address(this), tokenInput), "The Ballons did not transfer to the DEX" );
         (bool sent,) = msg.sender.call{value: ethAmountPurchased}("");
         require(sent, "Failed to send Ether");
-        emit TokenToEthSwap(msg.sender, "TokenToEthSwap", tokenInput, ethAmountPurchased);
+        emit TokenToEthSwap(msg.sender, "TokenToEthSwap", ethAmountPurchased, tokenInput);
         return ethAmountPurchased;
     }
 
@@ -161,7 +161,7 @@ contract DEX {
         // calculating the amount of LP tokens to mint
         uint256 lpToMint = totaLiquidity.mul(ethInput).div(ethReserves);
         // calculating the amount of BAL tokens to send to the DEX
-        tokenInput = (ethInput.mul(tokenReserve)).div(ethReserves);
+        tokenInput = (ethInput.mul(tokenReserve)).div(ethReserves).add(1);
         // updating the total liquidity
         totaLiquidity = totaLiquidity.add(lpToMint);
         // updating the liquidity of the sender
@@ -177,5 +177,22 @@ contract DEX {
      * @notice allows withdrawal of $BAL and $ETH from liquidity pool
      * NOTE: with this current code, the msg caller could end up getting very little back if the liquidity is super low in the pool. I guess they could see that with the UI.
      */
-    function withdraw(uint256 amount) public returns (uint256 eth_amount, uint256 token_amount) {}
+     // dx=(x*(amount))/(totalLiquidity)
+     // dy(y*(amount))/(totalLiquidity)
+    function withdraw(uint256 amount) public returns (uint256 eth_amount, uint256 token_amount) {
+        require(amount > 0, "Amount of LP tokens must be more than 0");
+        require(amount <= liquidity[msg.sender], "Amount of LP tokens must be less than the sender holds");
+        // calculate how much eth and bal i would get for my shar of LP tokens
+        // asigning variables
+        uint256 totalEthAmount = address(this).balance;
+        uint256 totalTokenAmount = token.balanceOf(address(this));
+        // getting the amount of ETH and BAL tokens I will get out for the amount of LP tokens I have
+        uint256 ethAmountOut = (totalEthAmount.mul(amount)).div(totaLiquidity);
+        uint256 tokenAmountOut = (totalTokenAmount.mul(amount)).div(totaLiquidity);
+        (bool sent, ) = msg.sender.call{value: ethAmountOut}("");
+        require(sent, "ETH not sent to the msg.sender");
+        require(token.transfer(msg.sender, tokenAmountOut), "BAL not transfered to the msg.sender");
+        emit LiquidityRemoved(msg.sender, amount, ethAmountOut, tokenAmountOut);
+        return (ethAmountOut, tokenAmountOut);
+    }
 }
