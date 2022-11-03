@@ -1,16 +1,21 @@
+/* eslint-disable no-unused-expressions */
+/* eslint-disable prettier/prettier */
+/* eslint-disable camelcase */
+/* eslint-disable no-undef */
 const { ethers } = require("hardhat");
 const { use, expect } = require("chai");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { solidity } = require("@nomicfoundation/hardhat-chai-matchers");
 
 /**
  * @notice auto-grading tests for simpleDEX challenge
- * Stages of testing are as follows: set up global test variables, test contract deployment, deploy contracts in beforeEach(), then actually test out each 
+ * Stages of testing are as follows: set up global test variables, test contract deployment, deploy contracts in beforeEach(), then actually test out each
  * separate function.
  * @dev this is still a rough WIP. See TODO: scattered throughout.'
  * @dev additional TODO: Write edge cases; putting in zero as inputs, or whatever.
  * @dev Harshit will be producing auto-grading tests in one of the next PRs. 
  */
-describe("🚩 Challenge 3: ⚖️ 🪙 Simple DEX", function () {
+describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
   this.timeout(45000);
 
   let dexContract;
@@ -34,17 +39,18 @@ describe("🚩 Challenge 3: ⚖️ 🪙 Simple DEX", function () {
   });
 
   describe("DEX: Standard Path", function () {
-    // TODO: need to add tests that the other functions do not work if we try calling them without init() started.
     /* TODO checking `price` calcs. Preferably calculation test should be provided by somebody who didn't implement this functions in 
-    challenge to not reproduce mistakes systematically.*/
+    challenge to not reproduce mistakes systematically. */
     describe("init()", function () {
       describe("ethToToken()", function () {
         it("Should send 1 Ether to DEX in exchange for _ $BAL", async function () {
-          let tx1 = await dexContract.ethToToken({
-            value: ethers.utils.parseEther("1"),
-          });
-          // TODO: SYNTAX - Figure out how to read eth balance of dex contract and to compare it against the eth sent in via this tx. Also 
-          //figure out why/how to read the event that should be emitted with this too.
+          let tx1 = await dexContract.ethToToken({value: ethers.utils.parseEther("1"),});
+          // Reverts ethToToken() if the contract is not initialized
+          await expect(tx1).not.to.be.revertedWith("Contract not initialized");
+
+          // TODO: SYNTAX - Figure out how to read eth balance of dex contract and to compare it against the eth sent in via this tx. 
+          
+          // Also figure out why/how to read the event that should be emitted with this too.
           /* Also, notice, that reference `DEX.sol` could emit *after* `return`, so that they're never emited. It's on your own to find and
           correct */
 
@@ -52,33 +58,50 @@ describe("🚩 Challenge 3: ⚖️ 🪙 Simple DEX", function () {
             await ethers.provider.getBalance(dexContract.address)
           ).to.equal(ethers.utils.parseEther("6"));
 
-          // await expect(tx1)
-          //   .emit(dexContract, "EthToTokenSwap")
-          //   .withArgs(user2.address, __, ethers.utils.parseEther("1"));
+        });
+
+        it("Should revert if 0 ETH sent", async function () {
+          await expect(dexContract.ethToToken({value: ethers.utils.parseEther("0"),})).to.be.reverted;
         });
 
         it("Should send less tokens after the first trade (ethToToken called)", async function () {
-          await dexContract.ethToToken({
+          const txUser2 = dexContract.connect(user2).ethToToken({
             value: ethers.utils.parseEther("1"),
           });
-          let tx1 = dexContract.connect(user2.signer).ethToToken({
+          const user2BalAfter = await balloonsContract.balanceOf(deployer.address);
+
+          const txUser3 = dexContract.connect(user3.signer).ethToToken({
             value: ethers.utils.parseEther("1"),
           });
-          // expect(tx1).emit(dexContract, "EthToTokenSwap").withArgs(user2.address, __, ethers.utils.parseEther("1"));
+          const user3BalAfter = await balloonsContract.balanceOf(user2.address);
+          
+          expect(user2BalAfter).to.greaterThan(user3BalAfter);
+        });
+        it ("Should emit an event when ethToToken() called", async function () {
+          await expect(dexContract.ethToToken({value: ethers.utils.parseEther("1"),})).to.emit(dexContract, "EthToTokenSwap");
         });
         // could insert more tests to show the declining price, and what happens when the pool becomes very imbalanced.
       });
       describe("tokenToEth", async () => {
         it("Should send 1 $BAL to DEX in exchange for _ $ETH", async function () {
           const balloons_bal_start = await balloonsContract.balanceOf(dexContract.address);
-          
-          let tx1 = await dexContract
-            .tokenToEth(ethers.utils.parseEther("1"));
+          const dex_eth_start = await ethers.provider.getBalance(dexContract.address);
 
-          //TODO: SYNTAX -  write an expect that takes into account the emitted event from tokenToETH.
-          expect(await balloonsContract.balanceOf(dexContract.address))
-            .to.equal(balloons_bal_start.add(ethers.utils.parseEther("1")));
+          const tx1 = await dexContract.tokenToEth(ethers.utils.parseEther("1"));
+          await expect(tx1).not.to.be.revertedWith("Contract not initialized");
+          // Checks that the balance of the DEX contract has decreased by 1 $BAL
+          expect(await balloonsContract.balanceOf(dexContract.address)).to.equal(balloons_bal_start.add(ethers.utils.parseEther("1")));
+          // Checks that the balance of the DEX contract has increased
+          expect(await ethers.provider.getBalance(dexContract.address)).to.lessThan(dex_eth_start); 
         });
+
+        it("Should revert if 0 tokens sent to the DEX", async function () {
+          await expect(dexContract.tokenToEth(ethers.utils.parseEther("0"))).to.be.reverted;
+        });
+
+        it("Should emit event TokenToEthSwap when tokenToEth() called", async function () {
+          await expect(dexContract.tokenToEth(ethers.utils.parseEther("1"))).to.emit(dexContract, "TokenToEthSwap");
+        }); 
 
         it("Should send less eth after the first trade (tokenToEth() called)", async function () {
           let tx1 = await dexContract.tokenToEth(ethers.utils.parseEther("1"));
@@ -89,7 +112,7 @@ describe("🚩 Challenge 3: ⚖️ 🪙 Simple DEX", function () {
 
           function getEthAmount(txReceipt) {
             const logDescr = dexContract.interface.parseLog(
-              txReceipt.logs.find(log => log.address == dexContract.address)
+              txReceipt.logs.find(log => log.address === dexContract.address)
             );
             const args = logDescr.args;
             return args[2]; // index of ethAmount in event
@@ -115,8 +138,7 @@ describe("🚩 Challenge 3: ⚖️ 🪙 Simple DEX", function () {
       // pool should have 5:5 ETH:$BAL ratio
       describe("withdraw", async () => {
         it("Should withdraw 1 ETH and 1 $BAL when pool at 1:1 ratio", async function () {
-          let tx1 = await dexContract
-            .withdraw(ethers.utils.parseEther("1"));
+          let tx1 = await dexContract.withdraw(ethers.utils.parseEther("1"));
 
           // TODO: SYNTAX - Write expect() assessing changed liquidty within the pool. Should have an emitted event!
         });

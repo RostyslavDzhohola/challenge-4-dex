@@ -19,7 +19,24 @@ contract DEX {
     IERC20 token; //instantiates the imported contract
     uint256 public totaLiquidity; //total liquidity in the contract
     mapping (address => uint256) public liquidity; //mapping of liquidity of each user
+    bool public contractInitialzed; //string to check if contract is initialized
     /* ========== EVENTS ========== */
+    /**
+    * @notice Modifier to check if contract is initialized
+     */
+    modifier onlyInitialized() {
+        require(contractInitialzed, "Contract not initialized");
+        _;
+    }
+
+     /**
+     * @notice Emitted when init() called and contract is initialized
+     */
+    event DexInitialized(
+        bool _contractInitialized,
+        uint256 _tokens, 
+        uint256 _totalLiquidity
+    );
 
     /**
      * @notice Emitted when ethToToken() swap transacted
@@ -82,7 +99,9 @@ contract DEX {
         require(tokens > 0, "Amount of Balloons sent to DEX must be more than 0");
         totaLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
         liquidity[msg.sender] = totaLiquidity; //sets the liquidity of the sender to the total liquidity
+        contractInitialzed = true; //sets the contractInitialized variable to true
         emit LiquidityProvided(msg.sender,totaLiquidity, msg.value, tokens); //emits the event that liquidity has been provided
+        emit DexInitialized(contractInitialzed, tokens, totaLiquidity); //emits the event that the DEX has been initialized
         return totaLiquidity; //returns the total liquidity
     }
 
@@ -96,7 +115,7 @@ contract DEX {
         uint256 xInput, 
         uint256 xReserves,
         uint256 yReserves
-    ) public pure returns (uint256 yOutput) {  
+    ) public onlyInitialized view returns (uint256 yOutput) {  
         uint256 xInputWithFee = xInput.mul(997);
         uint256 numerator = xInputWithFee.mul(yReserves);
         uint256 denominator = xReserves.mul(1000).add(xInputWithFee);
@@ -115,13 +134,11 @@ contract DEX {
     /**
      * @notice sends Ether to DEX in exchange for $BAL
      */
-    function ethToToken() public payable returns (uint256 tokenOutput) {
+    function ethToToken () public onlyInitialized payable returns (uint256 tokenOutput) {
         uint256 tokenReserves = token.balanceOf(address(this));
         uint256 ethReserves = address(this).balance.sub(msg.value); // I am subtracting ETH from the contract balance, because I want to get reseves before I have added the ETH from the msg.value 
         uint256 tokenAmountPurchased = price(msg.value, ethReserves, tokenReserves);
-        require(tokenAmountPurchased < tokenReserves, "Not enough tokens in the reserve");
         require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
-        require(msg.value < ethReserves, "Not enough ETH in the reserve");
         require(token.transfer(msg.sender, tokenAmountPurchased), "The Ballons did not transfer to the user" );
         emit EthToTokenSwap(msg.sender, "EthToTokenSwap" , msg.value, tokenAmountPurchased);
         return tokenAmountPurchased;
@@ -130,13 +147,11 @@ contract DEX {
     /**
      * @notice sends $BAL tokens to DEX in exchange for Ether
      */
-    function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {
+    function tokenToEth(uint256 tokenInput) public onlyInitialized returns (uint256 ethOutput) {
         uint256 tokenReserves = token.balanceOf(address(this));
         uint256 ethReserves = address(this).balance;
         uint256 ethAmountPurchased = price(tokenInput, tokenReserves ,ethReserves );
-        require(ethAmountPurchased < tokenReserves, "Not enough tokens in the reserve");
         require(tokenInput > 0, "Amount of Balloons sent to DEX must be more than 0");
-        require(tokenInput < ethReserves, "Not enough ETH in the reserve");
         require(token.transferFrom(msg.sender, address(this), tokenInput), "The Ballons did not transfer to the DEX" );
         (bool sent,) = msg.sender.call{value: ethAmountPurchased}("");
         require(sent, "Failed to send Ether");
@@ -151,7 +166,7 @@ contract DEX {
      * NOTE: Equal parts of both assets will be removed from the user's wallet with respect to the price outlined by the AMM.
      */
      // let dx = msg.value = ETH <> and dy = tokenInput = BAL
-    function deposit() public payable returns (uint256 tokensDeposited) {
+    function deposit() public onlyInitialized payable returns (uint256 tokensDeposited) {
         require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
         // getting all states
         uint256 ethReserves = address(this).balance.sub(msg.value);
@@ -179,7 +194,8 @@ contract DEX {
      */
      // dx=(x*(amount))/(totalLiquidity)
      // dy(y*(amount))/(totalLiquidity)
-    function withdraw(uint256 amount) public returns (uint256 eth_amount, uint256 token_amount) {
+
+    function withdraw(uint256 amount) public onlyInitialized returns (uint256 eth_amount, uint256 token_amount) {
         require(amount > 0, "Amount of LP tokens must be more than 0");
         require(amount <= liquidity[msg.sender], "Amount of LP tokens must be less than the sender holds");
         // calculate how much eth and bal i would get for my shar of LP tokens
@@ -193,6 +209,7 @@ contract DEX {
         require(sent, "ETH not sent to the msg.sender");
         require(token.transfer(msg.sender, tokenAmountOut), "BAL not transfered to the msg.sender");
         liquidity[msg.sender] = liquidity[msg.sender].sub(amount);
+        totaLiquidity = totaLiquidity.sub(amount);
         emit LiquidityRemoved(msg.sender, amount, ethAmountOut, tokenAmountOut);
         return (ethAmountOut, tokenAmountOut);
     }
