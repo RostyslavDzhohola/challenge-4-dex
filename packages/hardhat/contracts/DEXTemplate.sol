@@ -17,7 +17,7 @@ contract DEX {
 
     using SafeMath for uint256; //outlines use of SafeMath for uint256 variables
     IERC20 token; //instantiates the imported contract
-    uint256 public totaLiquidity; //total liquidity in the contract
+    uint256 public totalLiquidity; //total liquidity in the contract
     mapping (address => uint256) public liquidity; //mapping of liquidity of each user
     bool public contractInitialzed; //string to check if contract is initialized
     /* ========== EVENTS ========== */
@@ -63,9 +63,9 @@ contract DEX {
      */
     event LiquidityProvided(
         address indexed _provider,
-        uint256 _liquidityMinted,
+        uint256 _tokenAmount,
         uint256 _ethAmount,
-        uint256 _tokenAmount        
+        uint256 _liquidityMinted        
     );
 
     /**
@@ -93,16 +93,16 @@ contract DEX {
      * NOTE: since ratio is 1:1, this is fine to initialize the totalLiquidity (wrt to balloons) as equal to eth balance of contract.
      */
     function init(uint256 tokens) public payable returns (uint256) {
-        require(totaLiquidity == 0, "DEX: already initialized"); //ensures that the DEX contract has not already been initialized
+        require(totalLiquidity == 0, "DEX: already initialized"); //ensures that the DEX contract has not already been initialized
         require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
         require(token.transferFrom(msg.sender, address(this), tokens) , "The Ballons did not transfer to the DEX" );
         require(tokens > 0, "Amount of Balloons sent to DEX must be more than 0");
-        totaLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
-        liquidity[msg.sender] = totaLiquidity; //sets the liquidity of the sender to the total liquidity
+        totalLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
+        liquidity[msg.sender] = totalLiquidity; //sets the liquidity of the sender to the total liquidity
         contractInitialzed = true; //sets the contractInitialized variable to true
-        emit LiquidityProvided(msg.sender,totaLiquidity, msg.value, tokens); //emits the event that liquidity has been provided
-        emit DexInitialized(contractInitialzed, tokens, totaLiquidity); //emits the event that the DEX has been initialized
-        return totaLiquidity; //returns the total liquidity
+        emit LiquidityProvided(msg.sender, tokens, msg.value,  totalLiquidity); //emits the event that liquidity has been provided
+        emit DexInitialized(contractInitialzed, tokens, totalLiquidity); //emits the event that the DEX has been initialized
+        return totalLiquidity; //returns the total liquidity
     }
 
     /**
@@ -117,8 +117,10 @@ contract DEX {
         uint256 yReserves
     ) public onlyInitialized view returns (uint256 yOutput) {  
         uint256 xInputWithFee = xInput.mul(997);
+        // uint256 xInputWithFee = xInput; // without fee
         uint256 numerator = xInputWithFee.mul(yReserves);
         uint256 denominator = xReserves.mul(1000).add(xInputWithFee);
+        // uint256 denominator = xReserves.add(xInputWithFee); // wihout fee
         return (numerator.div(denominator));
     }
 
@@ -174,17 +176,17 @@ contract DEX {
         uint256 ethInput = msg.value;
         uint256 tokenInput;
         // calculating the amount of LP tokens to mint
-        uint256 lpToMint = totaLiquidity.mul(ethInput).div(ethReserves);
+        uint256 lpToMint = totalLiquidity.mul(ethInput).div(ethReserves);
         // calculating the amount of BAL tokens to send to the DEX
         tokenInput = (ethInput.mul(tokenReserve)).div(ethReserves).add(1);
         // updating the total liquidity
-        totaLiquidity = totaLiquidity.add(lpToMint);
+        totalLiquidity = totalLiquidity.add(lpToMint);
         // updating the liquidity of the sender
         liquidity[msg.sender] = liquidity[msg.sender].add(lpToMint);
         // transfering the tokens to the DEX and if not enough tokens are sent, the transaction will revert
         require(token.transferFrom(msg.sender, address(this), tokenInput), "DEX did not receive BAL tokens");
         // emitting the event
-        emit LiquidityProvided(msg.sender, lpToMint, ethInput, tokenInput);
+        emit LiquidityProvided(msg.sender, tokenInput ,ethInput, lpToMint);
         return tokenInput;
     }
 
@@ -203,13 +205,13 @@ contract DEX {
         uint256 totalEthAmount = address(this).balance;
         uint256 totalTokenAmount = token.balanceOf(address(this));
         // getting the amount of ETH and BAL tokens I will get out for the amount of LP tokens I have
-        uint256 ethAmountOut = (totalEthAmount.mul(amount)).div(totaLiquidity);
-        uint256 tokenAmountOut = (totalTokenAmount.mul(amount)).div(totaLiquidity);
+        uint256 ethAmountOut = (totalEthAmount.mul(amount)).div(totalLiquidity);
+        uint256 tokenAmountOut = (totalTokenAmount.mul(amount)).div(totalLiquidity);
         (bool sent, ) = msg.sender.call{value: ethAmountOut}("");
         require(sent, "ETH not sent to the msg.sender");
         require(token.transfer(msg.sender, tokenAmountOut), "BAL not transfered to the msg.sender");
         liquidity[msg.sender] = liquidity[msg.sender].sub(amount);
-        totaLiquidity = totaLiquidity.sub(amount);
+        totalLiquidity = totalLiquidity.sub(amount);
         emit LiquidityRemoved(msg.sender, amount, ethAmountOut, tokenAmountOut);
         return (ethAmountOut, tokenAmountOut);
     }
