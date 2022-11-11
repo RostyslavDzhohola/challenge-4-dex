@@ -267,7 +267,7 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
         it("Should withdraw 1 ETH and 1 $BAL when pool at 1:1 ratio", async function () {
           const totalLpBefore = await dexContract.totalLiquidity();
           const userBallonsBalance = await balloonsContract.balanceOf(deployer.address);
-          console.log("dexContract.totalLpBefore", totalLpBefore.toString());
+          // console.log("dexContract.totalLpBefore", totalLpBefore.toString());
           const tx1 = await dexContract.withdraw(ethers.utils.parseEther("1"));
           const userBallonsBalanceAfter = await balloonsContract.balanceOf(deployer.address);
           const tx1_receipt = await tx1.wait();
