@@ -278,7 +278,6 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
             to.equal(userBallonsBalanceAfter.sub(ethers.utils.parseEther("1")));
           expect(eth_out, "checks the event emtier from tx").to.be.equal(ethers.utils.parseEther("1"));
           expect(token_out, "checks the event emtier from tx").to.be.equal(ethers.utils.parseEther("1"));
-          // TODO: SYNTAX - Write expect() assessing changed liquidty within the pool. Should have an emitted event!
         });
         
         it("Should revert if sender does not have enought liqudity", async function () {
