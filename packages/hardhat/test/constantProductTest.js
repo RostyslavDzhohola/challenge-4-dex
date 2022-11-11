@@ -294,6 +294,18 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
           expect(totalLpAfter, "emiter has to show correct LP amount burned").to.be.equal(totalLpBefore.sub(liquidityBurned));
           expect(totalLpBefore, "total LP should decrease").to.be.above(totalLpAfter);
         });
+
+        it("Should emit event LiquidityWithdrawn when withdraw() called", async function () {
+          await expect(dexContract.withdraw(ethers.utils.parseEther("1.5")), 
+            "Make sure you emit the LiquidityRemoved in the correct order ").
+            to.emit(dexContract, "LiquidityRemoved").
+              withArgs(
+                deployer.address, 
+                ethers.utils.parseEther("1.5"), 
+                ethers.utils.parseEther("1.5"), 
+                ethers.utils.parseEther("1.5")
+              );
+        });
       });
     });
     // ----------------- END OF CHECKPOINT 5 -----------------
