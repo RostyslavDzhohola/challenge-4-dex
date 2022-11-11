@@ -1,8 +1,10 @@
+/* eslint-disable prettier/prettier */
 // deploy/00_deploy_your_contract.js
 
 const { ethers } = require("hardhat");
 
 const localChainId = "31337";
+let initTxReceipt;
 
 // const sleep = (ms) =>
 //   new Promise((r) =>
@@ -13,7 +15,7 @@ const localChainId = "31337";
 //   );
 
 module.exports = async ({ getNamedAccounts, deployments, getChainId }) => {
-  const { deploy } = deployments;
+  const { deploy, log, execute } = deployments;
   const { deployer } = await getNamedAccounts();
   const chainId = await getChainId();
 
@@ -49,11 +51,30 @@ module.exports = async ({ getNamedAccounts, deployments, getChainId }) => {
   // If you are going to the testnet make sure your deployer account has enough ETH
   await balloons.approve(dex.address, ethers.utils.parseEther("100"));
   console.log("INIT exchange...");
+  
   await dex.init(ethers.utils.parseEther("5"), {
     // transfer 5 balloons to DEX
     value: ethers.utils.parseEther("5"),
     // transfer 5 ETH to DEX
     gasLimit: 200000,
   });
+  // initTxReceipt = await initTx.wait();
+
+  // await execute(
+  //   "DEX", 
+  //   { from: deployer, 
+  //     log: true,
+  //     value: ethers.utils.parseEther("5"),
+  //     gasLimit: 200000,
+  //   },
+  //   "init", 
+  //   ethers.utils.parseEther("5")
+  // ).then((res) => {
+  //   res.events.forEach((e) => {
+  //     log("INIT events are",e.event, e.args);
+  //   });
+  // TODO: find out how to pass the receipt to the testing file so we can test the events emitted by the init function in the DEX contract 
+  // });
 };
 module.exports.tags = ["Balloons", "DEX"];
+module.exports.log = true; 

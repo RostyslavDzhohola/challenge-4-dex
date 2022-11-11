@@ -4,6 +4,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "hardhat/console.sol";
 
 /**
  * @title DEX Template
@@ -28,15 +29,6 @@ contract DEX {
         require(contractInitialzed, "Contract not initialized");
         _;
     }
-
-     /**
-     * @notice Emitted when init() called and contract is initialized
-     */
-    event DexInitialized(
-        bool _contractInitialized,
-        uint256 _tokens, 
-        uint256 _totalLiquidity
-    );
 
     /**
      * @notice Emitted when ethToToken() swap transacted
@@ -101,7 +93,7 @@ contract DEX {
         liquidity[msg.sender] = totalLiquidity; //sets the liquidity of the sender to the total liquidity
         contractInitialzed = true; //sets the contractInitialized variable to true
         emit LiquidityProvided(msg.sender, tokens, msg.value,  totalLiquidity); //emits the event that liquidity has been provided
-        emit DexInitialized(contractInitialzed, tokens, totalLiquidity); //emits the event that the DEX has been initialized
+        console.log("Contract initiazled ");
         return totalLiquidity; //returns the total liquidity
     }
 

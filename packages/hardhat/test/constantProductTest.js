@@ -23,18 +23,8 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
   let deployer;
   let user2;
   let user3;
-
-  function deployNewInstance() {
-    before('Deploying fresh cotract instance', async function () {
-      [deployer, user2, user3] = await ethers.getSigners();
-  
-      await deployments.fixture(['Balloons', 'DEX']);
-  
-      dexContract = await ethers.getContract('DEX', deployer);
-      balloonsContract = await ethers.getContract('Balloons', deployer);
-      await balloonsContract.transfer( user2.address, "" + 10 * 10 ** 18 );
-    });
-  }
+  let receiptDEX;
+  let globalDeployReceipt;
 
   function getEventValue(txReceipt, eventNumber) {
     const logDescr = dexContract.interface.parseLog(
@@ -44,6 +34,18 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
     return args[eventNumber]; // index of ethAmount in event
   }
 
+  async function deployNewInstance() {
+    before('Deploying fresh cotract instance', async function () {
+      [deployer, user2, user3] = await ethers.getSigners();
+  
+      const deploymentRecepit = await deployments.fixture(['Balloons', 'DEX']);
+
+      dexContract = await ethers.getContract('DEX', deployer);
+      balloonsContract = await ethers.getContract('Balloons', deployer);
+      await balloonsContract.transfer( user2.address, "" + 10 * 10 ** 18 );
+    });
+  }
+
   before((done) => {
     setTimeout(done, 2000);
   });
@@ -51,13 +53,70 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
   describe("DEX: Standard Path", function () {
     /* TODO checking `price` calcs. Preferably calculation test should be provided by somebody who didn't implement this functions in 
     challenge to not reproduce mistakes systematically. */
-    describe("Testing Swap functionality", function () {
-      deployNewInstance();
 
+    // --------------------- START OF CHECKPOINT 2 ---------------------
+    describe("Checkpoint 2: Reserves", function () {
+      before('Deploying fresh cotract instance for testing init()', async function () {
+        const { deploy } = deployments;
+        const { deployer } = await getNamedAccounts();
+        const chainId = await getChainId();
+        
+        await deploy("Balloons", { from: deployer, log: true, });
+        const balloons = await ethers.getContract("Balloons", deployer);
+        await deploy("DEX", {
+          from: deployer,
+          args: [balloons.address],
+          log: true,
+          waitConfirmations: 5,
+        });
+        dexContract = await ethers.getContract("DEX", deployer);
+        await balloons.approve(dexContract.address, ethers.utils.parseEther("100"));
+      });
+      describe('init() function tests that referances solution.', () => {
+        it("Should have the contract initialized at deployment time", async function () {
+          const lpBefore = await dexContract.totalLiquidity();
+          expect(lpBefore).to.equal(0);
+          const txInit = await dexContract.init(ethers.utils.parseEther("5"), {
+            value: ethers.utils.parseEther("5"),
+            gasLimit: 200000,
+          });
+          const lpAfter = await dexContract.totalLiquidity();
+          expect(lpAfter, "LP not minted").to.equal(ethers.utils.parseEther("5"));
+          const txInitReceipt = await txInit.wait();
+          const initEvent =  getEventValue(txInitReceipt, 3);
+          expect(initEvent, "event not emited or the order of values in the event is different from what expected").
+            to.equal(ethers.utils.parseEther("5"));
+        });
+      });
+    });
+    // ----------------- END OF CHECKPOINT 2 -----------------
+    // ----------------- START OF CHECKPOINT 3 -----------------
+    describe ("Checkpoint 3: Price", async () => {
+      describe ("price()", async () => {
+        // https://etherscan.io/address/0x7a250d5630b4cf539739df2c5dacb4c659f2488d#readContract 
+        // in Uniswap the fee is build in getAmountOut() function
+        it ("Should check if prcie function calculates correctly", async function () {
+          let xInput = ethers.utils.parseEther("1");
+          let xReserves = ethers.utils.parseEther("5");
+          let yReserves = ethers.utils.parseEther("5");
+          // testing price() function
+          let yOutput = await dexContract.price(xInput, xReserves, yReserves);
+          expect(yOutput.toString(), "make sure to include small fee for LP providers").to.equal("831248957812239453");
+          xInput = ethers.utils.parseEther("1");
+          xReserves = ethers.utils.parseEther("10");
+          yReserves = ethers.utils.parseEther("15");
+          yOutput = await dexContract.price(xInput, xReserves, yReserves);
+          expect(yOutput.toString()).to.equal("1359916340820223697");
+        });
+      });
+    });
+    // ----------------- END OF CHECKPOINT 3 -----------------
+    // ----------------- START OF CHECKPOINT 4 -----------------
+    describe("Checkpoint 4: Trading", function () {
+      deployNewInstance();
       describe("ethToToken()", function () {
         it("Should send 1 Ether to DEX in exchange for _ $BAL", async function () {
           const dex_eth_start = await ethers.provider.getBalance(dexContract.address);
-
           const tx1 = await dexContract.ethToToken({value: ethers.utils.parseEther("1"),});
           // Reverts ethToToken() if the contract is not initialized
           await expect(tx1, "your functions shouldn't work without initalization").
@@ -68,12 +127,9 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
 
           const dex_eth_after = await ethers.provider.getBalance(dexContract.address);
 
+          // check if the event is emited correctly
           expect(ethSent_1, "If you get this error, check the order of your emited values or your emitor is after the return in your funcion").
             to.equal(dex_eth_after.sub(dex_eth_start));
-
-          // Also figure out why/how to read the event that should be emitted with this too.
-          /* Also, notice, that reference `DEX.sol` could emit *after* `return`, so that they're never emited. It's on your own to find and
-          correct */
 
           expect(
             await ethers.provider.getBalance(dexContract.address)
@@ -82,21 +138,26 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
         });
 
         it("Should revert if 0 ETH sent", async function () {
-          await expect(dexContract.ethToToken({value: ethers.utils.parseEther("0"),})).to.be.reverted;
+          await expect(
+            dexContract.ethToToken(
+                {value: ethers.utils.parseEther("0"),}
+              ),
+              "You should have require for reverting when sending 0 ETH to DEX").to.be.reverted;
         });
 
         it("Should send less tokens after the first trade (ethToToken called)", async function () {
-          const txUser2 = dexContract.connect(user2).ethToToken({
+          dexContract.connect(user2).ethToToken({
             value: ethers.utils.parseEther("1"),
           });
+          
           const user2BalAfter = await balloonsContract.balanceOf(deployer.address);
 
-          const txUser3 = dexContract.connect(user3.signer).ethToToken({
-            value: ethers.utils.parseEther("1"),
-          });
+          expect(dexContract.connect(user3.signer).ethToToken({ value: ethers.utils.parseEther("1"),}),
+           "ethToToken() function hast to emit an event EthToTokenSwap").
+              to.emit(dexContract, "EthToTokenSwap");
+
           const user3BalAfter = await balloonsContract.balanceOf(user2.address);
-          
-          expect(user2BalAfter).to.greaterThan(user3BalAfter);
+          expect(user2BalAfter).to.be.greaterThan(user3BalAfter);
         });
         it ("Should emit an event when ethToToken() called", async function () {
           await expect(dexContract.ethToToken({value: ethers.utils.parseEther("1"),})).to.emit(dexContract, "EthToTokenSwap");
@@ -120,6 +181,7 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
         });
         // could insert more tests to show the declining price, and what happens when the pool becomes very imbalanced.
       });
+
       describe("tokenToEth", async () => {
         it("Should send 1 $BAL to DEX in exchange for _ $ETH", async function () {
           const balloons_bal_start = await balloonsContract.balanceOf(dexContract.address);
@@ -156,82 +218,84 @@ describe("🚩 Challenge 4: ⚖️ 🪙 Simple DEX", function () {
             ).below(ethSent_1);
         });
       });
-
-      describe("Testing deposit and withdraw functionality" , async () => {
-        
-        describe("deposit", async () => {
-          deployNewInstance();
-          it("Shoud increase liquidity in the pool when ETH is deposited", async function () {
-            await balloonsContract.connect(user2).approve(dexContract.address, ethers.utils.parseEther("100"));
-            const liquidity_start = await dexContract.totalLiquidity();
-            expect(await await dexContract.getLiquidity(user2.address)).to.equal("0");
-
-            await expect(
-              dexContract.connect(user2).deposit(( 
-                ethers.utils.parseEther("5"),
-                { value: ethers.utils.parseEther("5"), }
-              )),
-                "This error most likely come up if the order of emited events is different from the expected test: address, _tokenAmount, _ethAmount, _liquidityMinted "
-              ).to.emit(dexContract, "LiquidityProvided").
-                  withArgs(
-                    anyValue,
-                    anyValue,
-                    ethers.utils.parseEther("5"),
-                    ethers.utils.parseEther("5")
-                  );
-            const liquidity_end = await dexContract.totalLiquidity();
-            expect(liquidity_end, "Total liquidity should increase").
-              to.equal(liquidity_start.add(ethers.utils.parseEther("5")));
-            user_lp = await dexContract.getLiquidity(user2.address);
-            expect(user_lp.toString(), "User LP should be 5").to.equal(ethers.utils.parseEther("5"));
-          });
-
-          it("Should revert if 0 ETH sent", async function () {
-            await expect(
-              dexContract.deposit(
-                (ethers.utils.parseEther("0"),
-                  {
-                    value: ethers.utils.parseEther("0"),
-                  }
-                )
-              )
-            ).to.be.reverted;
-          });
-        });
-        // pool should have 5:5 ETH:$BAL ratio
-        describe("withdraw", async () => {
-          deployNewInstance();
-          it("Should withdraw 1 ETH and 1 $BAL when pool at 1:1 ratio", async function () {
-            const totalLP = await dexContract.totalLiquidity();
-            console.log("dexContract.totalLiquidity", totalLP.toString());
-            const tx1 = await dexContract.withdraw(ethers.utils.parseEther("1"));
-            const tx1_receipt = await tx1.wait();
-            const eth_out = getEventValue(tx1_receipt, 2);
-            const token_out = getEventValue(tx1_receipt, 3);
-
-            expect(eth_out, "checks the event emtier from tx").to.be
-            console.log("eth_out ", eth_out.toString());
-
-            // TODO: SYNTAX - Write expect() assessing changed liquidty within the pool. Should have an emitted event!
-          });
-        });
-      });
-
-      describe ("Test price() function", async () => {
-        describe ("price()", async () => {
-          it ("Should check if prcie function calculates correctly", async function () {
-            // TODO: Check inputs with Uniswap oficial contract
-            let xInput = ethers.utils.parseEther("1");
-            let xReserves = ethers.utils.parseEther("5");
-            let yReserves = ethers.utils.parseEther("5");
-
-            let yOutput = await dexContract.price(xInput, xReserves, yReserves);
-            // console.log("yOutput ", yOutput.toString());
-            expect(yOutput.toString()).to.equal("831248957812239453");
-          });
-        });
-      });
-
     });
+    // ----------------- END OF CHECKPOINT 4 -----------------
+    // ----------------- START OF CHECKPOINT 5 -----------------
+    describe("Checkpoint 5: Liquidity" , async () => {
+      describe("deposit", async () => {
+        deployNewInstance();
+        it("Shoud increase liquidity in the pool when ETH is deposited", async function () {
+          await balloonsContract.connect(user2).approve(dexContract.address, ethers.utils.parseEther("100"));
+          const liquidity_start = await dexContract.totalLiquidity();
+          expect(await dexContract.getLiquidity(user2.address)).to.equal("0");
+
+          await expect(
+            dexContract.connect(user2).deposit(( 
+              ethers.utils.parseEther("5"),
+              { value: ethers.utils.parseEther("5"), }
+            )),
+              "This error most likely come up if the order of emited events is different from the expected test: address, _tokenAmount, _ethAmount, _liquidityMinted "
+            ).to.emit(dexContract, "LiquidityProvided").
+                withArgs(
+                  anyValue,
+                  anyValue,
+                  ethers.utils.parseEther("5"),
+                  ethers.utils.parseEther("5")
+                );
+          const liquidity_end = await dexContract.totalLiquidity();
+          expect(liquidity_end, "Total liquidity should increase").
+            to.equal(liquidity_start.add(ethers.utils.parseEther("5")));
+          user_lp = await dexContract.getLiquidity(user2.address);
+          expect(user_lp.toString(), "User LP should be 5").to.equal(ethers.utils.parseEther("5"));
+        });
+
+        it("Should revert if 0 ETH deposited", async function () {
+          await expect(
+            dexContract.deposit(
+              (ethers.utils.parseEther("0"),
+                {
+                  value: ethers.utils.parseEther("0"),
+                }
+              )
+            )
+          ).to.be.reverted;
+        });
+      });
+      // pool should have 5:5 ETH:$BAL ratio
+      describe("withdraw", async () => {
+        deployNewInstance();
+        it("Should withdraw 1 ETH and 1 $BAL when pool at 1:1 ratio", async function () {
+          const totalLpBefore = await dexContract.totalLiquidity();
+          const userBallonsBalance = await balloonsContract.balanceOf(deployer.address);
+          console.log("dexContract.totalLpBefore", totalLpBefore.toString());
+          const tx1 = await dexContract.withdraw(ethers.utils.parseEther("1"));
+          const userBallonsBalanceAfter = await balloonsContract.balanceOf(deployer.address);
+          const tx1_receipt = await tx1.wait();
+          const eth_out = getEventValue(tx1_receipt, 2);
+          const token_out = getEventValue(tx1_receipt, 3);
+
+          expect(userBallonsBalance, "user BAL ballance shout increase").
+            to.equal(userBallonsBalanceAfter.sub(ethers.utils.parseEther("1")));
+          expect(eth_out, "checks the event emtier from tx").to.be.equal(ethers.utils.parseEther("1"));
+          expect(token_out, "checks the event emtier from tx").to.be.equal(ethers.utils.parseEther("1"));
+          // TODO: SYNTAX - Write expect() assessing changed liquidty within the pool. Should have an emitted event!
+        });
+        
+        it("Should revert if sender does not have enought liqudity", async function () {
+          await expect(dexContract.withdraw(ethers.utils.parseEther("100"))).to.be.reverted;
+        });
+
+        it("Should decrease total liquidity", async function () {
+          const totalLpBefore = await dexContract.totalLiquidity();
+          const txWithdraw = await dexContract.withdraw(ethers.utils.parseEther("1"));
+          const totalLpAfter = await dexContract.totalLiquidity();
+          const txWithdraw_receipt = await txWithdraw.wait();
+          const liquidityBurned = getEventValue(txWithdraw_receipt, 2);
+          expect(totalLpAfter, "emiter has to show correct LP amount burned").to.be.equal(totalLpBefore.sub(liquidityBurned));
+          expect(totalLpBefore, "total LP should decrease").to.be.above(totalLpAfter);
+        });
+      });
+    });
+    // ----------------- END OF CHECKPOINT 5 -----------------
   });
 });
