@@ -4,6 +4,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "hardhat/console.sol";
 
 /**
  * @title DEX Template
@@ -17,9 +18,17 @@ contract DEX {
 
     using SafeMath for uint256; //outlines use of SafeMath for uint256 variables
     IERC20 token; //instantiates the imported contract
-    uint256 public totaLiquidity; //total liquidity in the contract
+    uint256 public totalLiquidity; //total liquidity in the contract
     mapping (address => uint256) public liquidity; //mapping of liquidity of each user
+    bool public contractInitialzed; //string to check if contract is initialized
     /* ========== EVENTS ========== */
+    /**
+    * @notice Modifier to check if contract is initialized
+     */
+    modifier onlyInitialized() {
+        require(contractInitialzed, "Contract not initialized");
+        _;
+    }
 
     /**
      * @notice Emitted when ethToToken() swap transacted
@@ -46,9 +55,9 @@ contract DEX {
      */
     event LiquidityProvided(
         address indexed _provider,
-        uint256 _liquidityMinted,
+        uint256 _tokenAmount,
         uint256 _ethAmount,
-        uint256 _tokenAmount        
+        uint256 _liquidityMinted        
     );
 
     /**
@@ -76,14 +85,16 @@ contract DEX {
      * NOTE: since ratio is 1:1, this is fine to initialize the totalLiquidity (wrt to balloons) as equal to eth balance of contract.
      */
     function init(uint256 tokens) public payable returns (uint256) {
-        require(totaLiquidity == 0, "DEX: already initialized"); //ensures that the DEX contract has not already been initialized
+        require(totalLiquidity == 0, "DEX: already initialized"); //ensures that the DEX contract has not already been initialized
         require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
         require(token.transferFrom(msg.sender, address(this), tokens) , "The Ballons did not transfer to the DEX" );
         require(tokens > 0, "Amount of Balloons sent to DEX must be more than 0");
-        totaLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
-        liquidity[msg.sender] = totaLiquidity; //sets the liquidity of the sender to the total liquidity
-        emit LiquidityProvided(msg.sender,totaLiquidity, msg.value, tokens); //emits the event that liquidity has been provided
-        return totaLiquidity; //returns the total liquidity
+        totalLiquidity = address(this).balance; // sets the total liquidity to the amount of ETH in the contract
+        liquidity[msg.sender] = totalLiquidity; //sets the liquidity of the sender to the total liquidity
+        contractInitialzed = true; //sets the contractInitialized variable to true
+        emit LiquidityProvided(msg.sender, tokens, msg.value,  totalLiquidity); //emits the event that liquidity has been provided
+        console.log("Contract initiazled ");
+        return totalLiquidity; //returns the total liquidity
     }
 
     /**
@@ -96,10 +107,12 @@ contract DEX {
         uint256 xInput, 
         uint256 xReserves,
         uint256 yReserves
-    ) public pure returns (uint256 yOutput) {  
+    ) public onlyInitialized view returns (uint256 yOutput) {  
         uint256 xInputWithFee = xInput.mul(997);
+        // uint256 xInputWithFee = xInput; // without fee
         uint256 numerator = xInputWithFee.mul(yReserves);
         uint256 denominator = xReserves.mul(1000).add(xInputWithFee);
+        // uint256 denominator = xReserves.add(xInputWithFee); // wihout fee
         return (numerator.div(denominator));
     }
 
@@ -115,13 +128,11 @@ contract DEX {
     /**
      * @notice sends Ether to DEX in exchange for $BAL
      */
-    function ethToToken() public payable returns (uint256 tokenOutput) {
+    function ethToToken () public onlyInitialized payable returns (uint256 tokenOutput) {
         uint256 tokenReserves = token.balanceOf(address(this));
         uint256 ethReserves = address(this).balance.sub(msg.value); // I am subtracting ETH from the contract balance, because I want to get reseves before I have added the ETH from the msg.value 
         uint256 tokenAmountPurchased = price(msg.value, ethReserves, tokenReserves);
-        require(tokenAmountPurchased < tokenReserves, "Not enough tokens in the reserve");
         require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
-        require(msg.value < ethReserves, "Not enough ETH in the reserve");
         require(token.transfer(msg.sender, tokenAmountPurchased), "The Ballons did not transfer to the user" );
         emit EthToTokenSwap(msg.sender, "EthToTokenSwap" , msg.value, tokenAmountPurchased);
         return tokenAmountPurchased;
@@ -130,13 +141,11 @@ contract DEX {
     /**
      * @notice sends $BAL tokens to DEX in exchange for Ether
      */
-    function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {
+    function tokenToEth(uint256 tokenInput) public onlyInitialized returns (uint256 ethOutput) {
         uint256 tokenReserves = token.balanceOf(address(this));
         uint256 ethReserves = address(this).balance;
         uint256 ethAmountPurchased = price(tokenInput, tokenReserves ,ethReserves );
-        require(ethAmountPurchased < tokenReserves, "Not enough tokens in the reserve");
         require(tokenInput > 0, "Amount of Balloons sent to DEX must be more than 0");
-        require(tokenInput < ethReserves, "Not enough ETH in the reserve");
         require(token.transferFrom(msg.sender, address(this), tokenInput), "The Ballons did not transfer to the DEX" );
         (bool sent,) = msg.sender.call{value: ethAmountPurchased}("");
         require(sent, "Failed to send Ether");
@@ -151,7 +160,7 @@ contract DEX {
      * NOTE: Equal parts of both assets will be removed from the user's wallet with respect to the price outlined by the AMM.
      */
      // let dx = msg.value = ETH <> and dy = tokenInput = BAL
-    function deposit() public payable returns (uint256 tokensDeposited) {
+    function deposit() public onlyInitialized payable returns (uint256 tokensDeposited) {
         require(msg.value > 0, "Amount of ETH sent to DEX must be more than 0");
         // getting all states
         uint256 ethReserves = address(this).balance.sub(msg.value);
@@ -159,17 +168,17 @@ contract DEX {
         uint256 ethInput = msg.value;
         uint256 tokenInput;
         // calculating the amount of LP tokens to mint
-        uint256 lpToMint = totaLiquidity.mul(ethInput).div(ethReserves);
+        uint256 lpToMint = totalLiquidity.mul(ethInput).div(ethReserves);
         // calculating the amount of BAL tokens to send to the DEX
         tokenInput = (ethInput.mul(tokenReserve)).div(ethReserves).add(1);
         // updating the total liquidity
-        totaLiquidity = totaLiquidity.add(lpToMint);
+        totalLiquidity = totalLiquidity.add(lpToMint);
         // updating the liquidity of the sender
         liquidity[msg.sender] = liquidity[msg.sender].add(lpToMint);
         // transfering the tokens to the DEX and if not enough tokens are sent, the transaction will revert
         require(token.transferFrom(msg.sender, address(this), tokenInput), "DEX did not receive BAL tokens");
         // emitting the event
-        emit LiquidityProvided(msg.sender, lpToMint, ethInput, tokenInput);
+        emit LiquidityProvided(msg.sender, tokenInput ,ethInput, lpToMint);
         return tokenInput;
     }
 
@@ -179,7 +188,8 @@ contract DEX {
      */
      // dx=(x*(amount))/(totalLiquidity)
      // dy(y*(amount))/(totalLiquidity)
-    function withdraw(uint256 amount) public returns (uint256 eth_amount, uint256 token_amount) {
+
+    function withdraw(uint256 amount) public onlyInitialized returns (uint256 eth_amount, uint256 token_amount) {
         require(amount > 0, "Amount of LP tokens must be more than 0");
         require(amount <= liquidity[msg.sender], "Amount of LP tokens must be less than the sender holds");
         // calculate how much eth and bal i would get for my shar of LP tokens
@@ -187,12 +197,13 @@ contract DEX {
         uint256 totalEthAmount = address(this).balance;
         uint256 totalTokenAmount = token.balanceOf(address(this));
         // getting the amount of ETH and BAL tokens I will get out for the amount of LP tokens I have
-        uint256 ethAmountOut = (totalEthAmount.mul(amount)).div(totaLiquidity);
-        uint256 tokenAmountOut = (totalTokenAmount.mul(amount)).div(totaLiquidity);
+        uint256 ethAmountOut = (totalEthAmount.mul(amount)).div(totalLiquidity);
+        uint256 tokenAmountOut = (totalTokenAmount.mul(amount)).div(totalLiquidity);
         (bool sent, ) = msg.sender.call{value: ethAmountOut}("");
         require(sent, "ETH not sent to the msg.sender");
         require(token.transfer(msg.sender, tokenAmountOut), "BAL not transfered to the msg.sender");
         liquidity[msg.sender] = liquidity[msg.sender].sub(amount);
+        totalLiquidity = totalLiquidity.sub(amount);
         emit LiquidityRemoved(msg.sender, amount, ethAmountOut, tokenAmountOut);
         return (ethAmountOut, tokenAmountOut);
     }
